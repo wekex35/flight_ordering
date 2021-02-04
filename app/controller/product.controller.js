@@ -16,7 +16,7 @@ ProductController.insertAll = async (res,req)=> {
 }
 
 ProductController.getProductList = async (res,req) => {
-    console.log(req.query);
+   console.time("Excecution Time");
     var query = req.query;
     try {   
         var sort = {};
@@ -30,6 +30,7 @@ ProductController.getProductList = async (res,req) => {
      } catch (error) {
         sendResponse(res,"fail","Unable Read Data",error)        
      }
+     console.timeEnd("Excecution Time");
 }
 
 function sendResponse(res,status,message,result){

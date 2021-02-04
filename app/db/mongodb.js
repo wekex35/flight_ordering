@@ -95,8 +95,6 @@ class MongoDB {
 
     static async getAllProducts(collection, condition,priceRange,sort, page = 1,) {
         var skip = Config.itemPerPage * (page - 1);
-        console.log(priceRange);
-        console.log("here");
         var mainCondition =  { $and: [ condition, { price: {$gte: priceRange.price.min, $lte:  priceRange.price.max}} ] } 
         try {
             var data = {};
