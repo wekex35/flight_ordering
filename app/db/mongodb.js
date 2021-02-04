@@ -1,14 +1,13 @@
 var ObjectID = require('mongodb').ObjectID;
 const { MongoClient } = require("mongodb");
 const { v4: uuidv4 } = require('uuid');
-const Constants = require('../utils/constant');
+const Config = require('../../config');
 
 class MongoDB {   
     static async initDb() {
-        // var uri = "mongodb://localhost:27017/flutteruix";
-        var uri = "mongodb://flutteruix:123flutteruix@172.105.18.47:27017/test?authSource=test&readPreference=primary&appname=MongoDB%20Compass%20Community&ssl=false";
+        var uri = Config.mongoConnectionString;
         var dbClient = await MongoClient.connect(uri);
-        return dbClient.db('flutteruix');
+        return dbClient.db('flight_ordering');
     }
     static async insert(collection, data) {
         try {
@@ -20,12 +19,37 @@ class MongoDB {
         }
         return false;
     }
+
+    static async bulkInsert(collection, data) {
+        try {
+            var db = await this.initDb();
+            var res = await db.collection(collection).insertMany(data)
+            return res.insertedCount;
+        } catch (error) {
+           throw {"message":error}
+        }
+    }
     static async update(collection, query, data) {
         try {
             var db = await this.initDb();
             var res = await db.collection(collection).updateOne(
                 query,
                 data
+            );
+            return res.modifiedCount == 1;
+        } catch (error) {
+            // console.log(error);
+        }
+        return false;
+    }
+
+    static async placeOrderStockUpdate(collection, id, quantity) {
+        try {
+            var db = await this.initDb();
+            var res = await db.collection(collection).
+            updateOne(
+                {_id: new ObjectID(id)},
+                { $inc: { stock: quantity} }
             );
             return res.modifiedCount == 1;
         } catch (error) {
@@ -56,58 +80,12 @@ class MongoDB {
         }
     }
 
-    static async selectOne(collection, condition) {
+
+    static async getProduct(collection, id) {
         try {
             var data;
             var db = await this.initDb();
-            data = await db.collection(collection).findOne(condition);
-            return data;
-        } catch (error) {
-            // console.log(error);
-        }
-    }
-    static async singlePost(collection, condition) {
-        try {
-            var data;
-            var db = await this.initDb();
-            data = await db.collection(collection).findOne(condition);
-            // console.log(data);
-            if(data == null)
-                return undefined;
-     
-            var pre = await db.collection(collection).find({ _id: { $lt: new ObjectID(data['_id']) } })
-                .sort({ _id: -1 })
-                .project({ title: 1, url: 1, })
-                .limit(1)
-                .toArray();
-            var next = await db.collection(collection).find({ _id: { $gt: new ObjectID(data['_id']) } })
-                .sort({ _id: 1 })
-                .project({ title: 1, url: 1, })
-                .limit(1)
-                .toArray();
-
-
-
-            data['related'] = await db.collection(collection).find(
-                {
-                    $or: [
-                        { "subcategory": data['subcategory'] != null ? data['subcategory'] : "" },
-                        { "category": data['category'] != null ? data['category'] : "" }],
-                    _id: { $ne: new ObjectID(data['_id']) }
-                }
-            ).limit(Constants.related).project({ title: 1, description: 1, image: 1, url: 1, views: 1 }).toArray()
-
-            if (pre) {
-                data['pre'] = pre[0]
-                // console.log(pre);
-            }
-            if (next) {
-                data['next'] = next[0]
-                // console.log(next);
-            }
-
-
- 
+            data = await db.collection(collection).findOne({_id: new ObjectID(id)});
             return data;
 
         } catch (error) {
@@ -115,22 +93,24 @@ class MongoDB {
         }
     }
 
-    static async getAllProducts(collection, condition, page = 1) {
-        condition['$or'] = [{ publish: "true" }, { publish: true }];
-
-        var skip = 10 * (page - 1);
+    static async getAllProducts(collection, condition,priceRange,sort, page = 1,) {
+        var skip = Config.itemPerPage * (page - 1);
+        console.log(priceRange);
+        console.log("here");
+        var mainCondition =  { $and: [ condition, { price: {$gte: priceRange.price.min, $lte:  priceRange.price.max}} ] } 
         try {
             var data = {};
+          
             var db = await this.initDb();
             data['product'] = await db.collection(collection)
-                .find(condition)
-                .sort({ published_at: -1 })
-                .limit(Constants.perPage)
-                .project({ title: 1, description: 1, image: 1, url: 1, published_at: 1, views: 1, category: 1, subcategory: 1 })
+                .find(mainCondition)
+                .sort(sort)
+                .limit(Config.itemPerPage)
                 .skip(skip)
                 .toArray();
+          
             data['total'] = await db.collection(collection)
-                .find(condition)
+                .find(mainCondition)
                 .count();
             var pages = []
             for (let index = 0; index < Math.ceil(data['total'] / 10); index++) {
